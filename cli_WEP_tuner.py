@@ -12,6 +12,8 @@ import pickle
 import copy
 
 log_file_name = "CLI_WEP_tuner.log"
+rosParam_WEP = "/WEP_rosParam"
+ParamFlag = 1 ## 1 = rosparam ; 0 = topic publish ; 2 = both topic and rosparam
 
 file_path = __file__
 directory = os.path.dirname(file_path)
@@ -26,9 +28,17 @@ Current_WEP_on_robot = [0 for i in range(101)]
 
 def readCurrentWEPsCallback(msg):
     global Current_WEP_on_robot
-    for i in range(msg.sizeOfArr):
-        Current_WEP_on_robot[msg.index[i]] = msg.WEP[i]
+    if ParamFlag == 0 or ParamFlag == 2:
+        for i in range(msg.sizeOfArr):
+            Current_WEP_on_robot[msg.index[i]] = msg.WEP[i]
 
+def readCurrentWEPs():
+    global Current_WEP_on_robot
+    if ParamFlag == 1 or ParamFlag == 2 :
+        Current_WEP_on_robot = rospy.get_param(rosParam_WEP)
+    if ParamFlag == 0 or ParamFlag == 2 :
+        pub_empty.publish(empty_msg)
+        time.sleep(0.5)
 
 def LogAllCurrentWEPs():
     WEP_NUM = 101
@@ -98,20 +108,29 @@ def send_All_current_WEP():
         os.system("echo " + "\"at ["+log_time+"]    " + log_str + "\" >> " + log_file_path)
     
     os.system("echo " + " \"<++++++++++++++++++++++++++++++++++++++++++++++++>\"  >> " + log_file_path)
-    pub_WEP.publish(msg)
+    if ParamFlag == 1 or ParamFlag == 2:
+        rospy.set_param(rosParam_WEP , Current_WEP_on_robot)
+    
+    if ParamFlag == 0 or ParamFlag == 2:
+        pub_WEP.publish(msg)
 
 
 def send_WEP(paramIndex, value):
     global indexDict
-    msg = WEP_msg()
-    msg.sizeOfArr = 1
-    WEP_NUM = 101
-    msg.WEP = [0 for i in range(WEP_NUM)]
-    msg.index = [0 for i in range(WEP_NUM)]
-
-    msg.WEP[0] = value
-    msg.index[0] = paramIndex
-    pub_WEP.publish(msg)
+    global Current_WEP_on_robot
+    if ParamFlag == 1 or ParamFlag == 2:
+        readCurrentWEPs()
+        Current_WEP_on_robot[paramIndex] = value
+        rospy.set_param(rosParam_WEP , Current_WEP_on_robot)
+    if ParamFlag == 0 or ParamFlag == 2:
+        msg = WEP_msg()
+        msg.sizeOfArr = 1
+        WEP_NUM = 101
+        msg.WEP = [0 for i in range(WEP_NUM)]
+        msg.index = [0 for i in range(WEP_NUM)]
+        msg.WEP[0] = value
+        msg.index[0] = paramIndex
+        pub_WEP.publish(msg)
 
     log_str = "WEP[" + indexDict[paramIndex] + "(" + str(paramIndex) + ")] updated to " + \
         str(value) + " "
@@ -357,7 +376,7 @@ try:
     pub_WEP = rospy.Publisher('update_WEP', WEP_msg, queue_size=10)
     pub_empty = rospy.Publisher('read_WEP', Empty, queue_size=10)
     rospy.Subscriber("readCurrentWEP", WEP_msg, readCurrentWEPsCallback)
-    rospy.init_node('cmd_WEP_updater', anonymous=True)
+    rospy.init_node('cli_WEP_updater', anonymous=True)
     empty_msg = Empty()
 except:
     print "ROS failed!"
@@ -426,8 +445,7 @@ if __name__ == "__main__":
                     load_current_WEP(value)
 
                 if value == "?":
-                    pub_empty.publish(empty_msg)
-                    time.sleep(0.5)
+                    readCurrentWEPs()
                     if param == "All" or param == "all":
                         LogAllCurrentWEPs()
                     else:
